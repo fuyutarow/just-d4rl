@@ -1,10 +1,17 @@
 # just-d4rl
 
-Easy-to-use D4RL offline dataset loader
+Easy-to-use D4RL offline dataset loader, focused solely on downloading and providing D4RL datasets without dependencies on gym or gymnasium.
 
+## Key Features
+
+- Downloads and provides D4RL offline datasets
+- No dependencies on gym or gymnasium
+- Lightweight and focused functionality
+- Easy integration with PyTorch
 
 ## Installation
-- [PyPI](https://pypi.org/project/just-d4rl/)
+
+Install from [PyPI](https://pypi.org/project/just-d4rl/):
 
 ```sh
 pip install just-d4rl
@@ -15,29 +22,24 @@ pip install just-d4rl
 ```python
 from just_d4rl import D4RLDataset, d4rl_offline_dataset
 
+# Download and load a D4RL dataset
 dataset = d4rl_offline_dataset("hopper-medium-v2")
+
+# Example datasets
 dataset = d4rl_offline_dataset("walker2d-random-v2")
 dataset = d4rl_offline_dataset("halfcheetah-medium-expert-v2")
 dataset = d4rl_offline_dataset("antmaze-umaze-v2")
 
-dataset = d4rl_offline_dataset("hopper-medium-v2")
+# Check dataset shapes
 dataset['observations'].shape, dataset['actions'].shape, dataset['rewards'].shape, dataset['next_observations'].shape, dataset['terminals'].shape
-# ((1000000, 11),
-#  (1000000, 11),
-#  (1000000, 3),
-#  (1000000,),
-#  (1000000,))
+# ((1000000, 11), (1000000, 3), (1000000,), (1000000, 11), (1000000,))
 
-
-dataset = d4rl_offline_dataset("hopper-medium-v2")
+# Create a PyTorch Dataset
+d4rl_dataset = d4rl_offline_dataset("hopper-medium-v2")
 dataset = D4RLDataset(d4rl_dataset)
 
+# Get a batch of data
 batch = dataset[-16:]
 batch["observation"].shape, batch["action"].shape, batch["reward"].shape, batch["next_observation"].shape, batch["terminal"].shape
-# (torch.Size([16, 11]),
-#  torch.Size([16, 3]),
-#  torch.Size([16]),
-#  torch.Size([16, 11]),
-#  torch.Size([16]),
-#  torch.Size([16]))
+# (torch.Size([16, 11]), torch.Size([16, 3]), torch.Size([16]), torch.Size([16, 11]), torch.Size([16]))
 ```
