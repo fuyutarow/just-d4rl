@@ -3,6 +3,7 @@ import urllib.request
 from pathlib import Path
 
 import h5py
+import torch
 from tqdm import tqdm
 
 from .d4rl_infos import DATASETS_URLS
@@ -90,3 +91,48 @@ def d4rl_offline_dataset(dataset_id: str, env=None):
     data_dict, file_path = get_dataset(dataset_id, env=env)
     print(f"Dataset loaded and saved at: {file_path}")
     return data_dict
+
+
+class D4RLDataset(torch.utils.data.Dataset):
+    def __init__(self, data_dict):
+        self.observations = torch.tensor(data_dict["observations"], dtype=torch.float32)
+        self.actions = torch.tensor(data_dict["actions"], dtype=torch.float32)
+        self.rewards = torch.tensor(data_dict["rewards"], dtype=torch.float32)
+        self.next_observations = torch.tensor(
+            data_dict["next_observations"], dtype=torch.float32
+        )
+        self.terminals = torch.tensor(data_dict["terminals"], dtype=torch.bool)
+        self.timeouts = torch.tensor(data_dict["timeouts"], dtype=torch.bool)
+
+        # Optional data
+        if "infos/action_log_probs" in data_dict:
+            self.action_log_probs = torch.tensor(
+                data_dict["infos/action_log_probs"], dtype=torch.float32
+            )
+        if "infos/qpos" in data_dict:
+            self.qpos = torch.tensor(data_dict["infos/qpos"], dtype=torch.float32)
+        if "infos/qvel" in data_dict:
+            self.qvel = torch.tensor(data_dict["infos/qvel"], dtype=torch.float32)
+
+    def __len__(self):
+        return len(self.observations)
+
+    def __getitem__(self, idx):
+        sample = {
+            "observation": self.observations[idx],
+            "action": self.actions[idx],
+            "reward": self.rewards[idx],
+            "next_observation": self.next_observations[idx],
+            "terminal": self.terminals[idx],
+            "timeout": self.timeouts[idx],
+        }
+
+        # Add optional data if available
+        if hasattr(self, "action_log_probs"):
+            sample["action_log_prob"] = self.action_log_probs[idx]
+        if hasattr(self, "qpos"):
+            sample["qpos"] = self.qpos[idx]
+        if hasattr(self, "qvel"):
+            sample["qvel"] = self.qvel[idx]
+
+        return sample
