@@ -84,7 +84,7 @@ def get_dataset(dataset_id: str, env=None):
     return data_dict
 
 
-def d4rl_qlearning_dataset(dataset_id: str, env=None):
+def d4rl_offline_dataset(dataset_id: str, env=None):
     assert (
         dataset_id in DATASETS_URLS
     ), f"Dataset {dataset_id} not found in D4RL, available datasets: {list(DATASETS_URLS.keys())}"
