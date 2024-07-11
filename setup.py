@@ -5,11 +5,12 @@ import pathlib
 from setuptools import setup
 
 CWD = pathlib.Path(__file__).absolute().parent
+PKG_NAME = "just_d4rl"
 
 
 def get_version():
     """Gets the version."""
-    path = CWD / "src" / "just_d4rl" / "__init__.py"
+    path = CWD / "src" / PKG_NAME / "__init__.py"
     content = path.read_text()
 
     for line in content.splitlines():
@@ -33,4 +34,4 @@ def get_description():
     return long_description
 
 
-setup(name="minari", version=get_version(), long_description=get_description())
+setup(name=PKG_NAME, version=get_version(), long_description=get_description())
