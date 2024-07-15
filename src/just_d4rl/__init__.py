@@ -1,3 +1,3 @@
-from .offline_env import D4RLDataset, d4rl_offline_dataset
+from .offline_env import *
 
-__version__ = "0.2407.2"
+__version__ = "0.2407.5"

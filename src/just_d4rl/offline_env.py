@@ -3,10 +3,11 @@ import urllib.request
 from pathlib import Path
 
 import h5py
+import numpy as np
 import torch
 from tqdm import tqdm
 
-from .d4rl_infos import DATASETS_URLS
+from .d4rl_infos import DATASETS_URLS, REF_MAX_SCORE, REF_MIN_SCORE
 
 
 def filepath_from_url(dataset_url: str):
@@ -84,13 +85,85 @@ def validate_data(data_dict, env):
     ), f"Terminals has wrong shape: {data_dict['terminals'].shape}"
 
 
+def qlearning_dataset(dataset, terminate_on_end=False):
+    """
+    Returns datasets formatted for use by standard Q-learning algorithms,
+    with observations, actions, next_observations, rewards, and a terminal
+    flag.
+
+    Args:
+        env: An OfflineEnv object.
+        dataset: An optional dataset to pass in for processing. If None,
+            the dataset will default to env.get_dataset()
+        terminate_on_end (bool): Set done=True on the last timestep
+            in a trajectory. Default is False, and will discard the
+            last timestep in each trajectory.
+        **kwargs: Arguments to pass to env.get_dataset().
+
+    Returns:
+        A dictionary containing keys:
+            observations: An N x dim_obs array of observations.
+            actions: An N x dim_action array of actions.
+            next_observations: An N x dim_obs array of next observations.
+            rewards: An N-dim float array of rewards.
+            terminals: An N-dim boolean array of "done" or episode termination flags.
+    """
+    N = dataset["rewards"].shape[0]
+    obs_ = []
+    next_obs_ = []
+    action_ = []
+    reward_ = []
+    done_ = []
+
+    # The newer version of the dataset adds an explicit
+    # timeouts field. Keep old method for backwards compatability.
+    use_timeouts = False
+    if "timeouts" in dataset:
+        use_timeouts = True
+
+    episode_step = 0
+    for i in range(N - 1):
+        obs = dataset["observations"][i].astype(np.float32)
+        new_obs = dataset["observations"][i + 1].astype(np.float32)
+        action = dataset["actions"][i].astype(np.float32)
+        reward = dataset["rewards"][i].astype(np.float32)
+        done_bool = bool(dataset["terminals"][i])
+
+        if use_timeouts:
+            final_timestep = dataset["timeouts"][i]
+        else:
+            raise NotImplementedError("Timeouts are not implemented for this dataset.")
+            # final_timestep = episode_step == env._max_episode_steps - 1
+        if (not terminate_on_end) and final_timestep:
+            # Skip this transition and don't apply terminals on the last step of an episode
+            episode_step = 0
+            continue
+        if done_bool or final_timestep:
+            episode_step = 0
+
+        obs_.append(obs)
+        next_obs_.append(new_obs)
+        action_.append(action)
+        reward_.append(reward)
+        done_.append(done_bool)
+        episode_step += 1
+
+    return {
+        "observations": np.array(obs_),
+        "actions": np.array(action_),
+        "next_observations": np.array(next_obs_),
+        "rewards": np.array(reward_),
+        "terminals": np.array(done_),
+    }
+
+
 def d4rl_offline_dataset(dataset_id: str, env=None):
     assert (
         dataset_id in DATASETS_URLS
     ), f"Dataset {dataset_id} not found in D4RL, available datasets: {list(DATASETS_URLS.keys())}"
     data_dict, file_path = get_dataset(dataset_id, env=env)
     print(f"Dataset loaded and saved at: {file_path}")
-    return data_dict
+    return qlearning_dataset(data_dict)
 
 
 class D4RLDataset(torch.utils.data.Dataset):
@@ -136,3 +209,51 @@ class D4RLDataset(torch.utils.data.Dataset):
             sample["qvel"] = self.qvel[idx]
 
         return sample
+
+
+class D4RLScoreNormalizer:
+    def __init__(self, dataset_id: str):
+        self.dataset_id = dataset_id
+        self.ref_min_score, self.ref_max_score = self._initialize_scores(dataset_id)
+
+    def _initialize_scores(self, dataset_id: str):
+        ref_min_score = REF_MIN_SCORE.get(dataset_id)
+        ref_max_score = REF_MAX_SCORE.get(dataset_id)
+
+        fallback_dataset_id = dataset_id
+        while ref_min_score is None or ref_max_score is None:
+            fallback_dataset_id = self._get_fallback_dataset_id(fallback_dataset_id)
+            if fallback_dataset_id is None:
+                break
+            ref_min_score = REF_MIN_SCORE.get(fallback_dataset_id)
+            ref_max_score = REF_MAX_SCORE.get(fallback_dataset_id)
+
+        if ref_min_score is None or ref_max_score is None:
+            raise ValueError(
+                f"Reference score not provided for dataset {dataset_id}. Can't compute the normalized score."
+            )
+
+        return ref_min_score, ref_max_score
+
+    def _get_fallback_dataset_id(self, dataset_id: str) -> str:
+        parts = dataset_id.rsplit("-", 1)
+        if len(parts) != 2:
+            return None
+
+        base, version = parts
+        if version.endswith("v2"):
+            fallback_version = "v1"
+        elif version.endswith("v1"):
+            fallback_version = "v0"
+        else:
+            return None
+
+        return f"{base}-{fallback_version}"
+
+    def get_normalized_score(self, returns: np.ndarray) -> np.ndarray:
+        return (returns - self.ref_min_score) / (
+            self.ref_max_score - self.ref_min_score
+        )
+
+    def __call__(self, returns: np.ndarray) -> np.ndarray:
+        return self.get_normalized_score(returns)
